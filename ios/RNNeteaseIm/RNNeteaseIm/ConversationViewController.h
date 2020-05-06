@@ -7,7 +7,7 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "NIMModel.h"
+#import "ImConfig.h"
 
 typedef void(^Success)(id param);
 typedef void(^Errors)(id erro);
@@ -17,7 +17,7 @@ typedef void(^Errors)(id erro);
 -(void)localSession:(NSInteger)index cerrentmessageId:(NSString *)currentMessageID success:(Success)succe err:(Errors)err;
 -(void)startSession:(NSString *)sessionID withType:(NSString *)type;
 -(void)stopSession;
--(void)sendAudioRecode:(NSString *)filePath;
+//-(void)sendAudioRecode:(NSString *)filePath;
 /**
  *  会话页详细配置
  */
@@ -34,9 +34,9 @@ typedef void(^Errors)(id erro);
 //发送音频
 -(void)sendAudioMessage:(  NSString *)file duration:(  NSString *)duration;
 //发送视频
--(void)sendTextMessage:(  NSString *)path duration:(  NSString *)duration width:(  NSString *)width height:(  NSString *)height displayName:(  NSString *)displayName;
+-(void)sendVideoMessage:(  NSString *)path duration:(  NSString *)duration width:(  NSString *)width height:(  NSString *)height displayName:(  NSString *)displayName;
 //发送自定义消息
--(void)sendCustomMessage:(  NSString *)attachment config:(  NSString *)config;
+-(void)sendCustomMessage:(NSDictionary *)dataDict;
 //发送地理位置消息
 -(void)sendLocationMessage:(  NSString *)latitude longitude:(  NSString *)longitude address:(  NSString *)address;
 //发送提醒消息
@@ -47,8 +47,12 @@ typedef void(^Errors)(id erro);
 - (void)sendBankTransferMessage:(NSString *)amount comments:(NSString *)comments serialNo:(NSString *)serialNo;
 //发送拆红包消息
 - (void)sendRedPacketOpenMessage:(NSString *)sendId hasRedPacket:(NSString *)hasRedPacket serialNo:(NSString *)serialNo;
+//发送名片消息
+- (void)sendCardMessage:(NSString *)type sessionId:(NSString *)sessionId name:(NSString *)name imgPath:(NSString *)strImgPath;
+
 //转发消息
 -(void)forwardMessage:(NSString *)messageId sessionId:(NSString *)sessionId sessionType:(NSString *)sessionType content:(NSString *)content success:(Success)succe;
+
 //本地历史记录
 -(void)localSessionList:(NSString *)sessionId sessionType:(NSString *)sessionType timeLong:(NSString *)timeLong direction:(NSString *)direction limit:(NSString *)limit asc:(BOOL)asc success:(Success)succe;
 //撤回消息
@@ -67,4 +71,11 @@ typedef void(^Errors)(id erro);
 - (void)onTouchVoiceSucc:(Success)succ Err:(Errors)err;
 //更新录音消息为已播放
 - (void)updateAudioMessagePlayStatus:(NSString *)messageID;
+
+//获得撤回内容
+- (NSString *)tipOnMessageRevoked:(id)message;
+//更具提示生成撤回消息
+- (NIMMessage *)msgWithTip:(NSString *)tip;
+//重发消息
+- (void)resendMessage:(NSString *)messageID;
 @end

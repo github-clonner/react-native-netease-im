@@ -22,15 +22,16 @@ public class MessageConstant {
         public final static String RED_PACKET = "redpacket";
         public final static String RED_PACKET_OPEN = "redpacketOpen";
         public final static String LINK = "url";
+        public final static String CARD = "card";
         public final static String CUSTON = "custom";
     }
 
     public class MsgStatus {
 
         public final static String SEND_DRAFT = "send_draft";
-        public final static String SEND_FAILE = "send_fail";
-        public final static String SEND_SENDING = "send_sending";
-        public final static String SEND_SUCCESS = "send_success";
+        public final static String SEND_FAILE = "send_failed";
+        public final static String SEND_SENDING = "send_going";
+        public final static String SEND_SUCCESS = "send_succed";
         public final static String RECEIVE_READ = "receive_read";
         public final static String RECEIVE_UNREAD = "receive_unread";
     }
@@ -88,12 +89,12 @@ public class MessageConstant {
     public static class Location {
         public final static String LATITUDE = "latitude";
         public final static String LONGITUDE = "longitude";
-        public final static String ADDRESS = "address";
+        public final static String ADDRESS = "title";
     }
 
     public static class MediaFile {
-        public final static String HEIGHT = "height";
-        public final static String WIDTH = "width";
+        public final static String HEIGHT = "imageHeight";
+        public final static String WIDTH = "imageWidth";
         public final static String DISPLAY_NAME = "displayName";
         public final static String DURATION = "duration";
         public final static String THUMB_PATH = "thumbPath";
@@ -117,6 +118,13 @@ public class MessageConstant {
         public final static String SEND_ID = "sendId";
         public final static String OPEN_ID = "openId";
 
+    }
+
+    public static class Card{
+        public final static String type = "type";
+        public final static String name = "name";
+        public final static String imgPath = "imgPath";
+        public final static String sessionId = "sessionId";
     }
 
     public static class Opt {

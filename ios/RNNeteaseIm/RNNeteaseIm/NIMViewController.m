@@ -9,7 +9,9 @@
 #import "NIMViewController.h"
 #import "ContactViewController.h"
 
-@interface NIMViewController ()<NIMLoginManagerDelegate,NIMConversationManagerDelegate>
+@interface NIMViewController ()<NIMLoginManagerDelegate,NIMConversationManagerDelegate>{
+//    BOOL isLoginFailed;
+}
 
 @end
 
@@ -49,6 +51,7 @@
             break;
         case NIMLoginStepLinkOK://连接服务器成功
             strStatus = @"5";
+//            [self backLogin];
             [self getResouces];
             break;
         case NIMLoginStepLinkFailed://连接服务器失败
@@ -62,6 +65,7 @@
             break;
         case NIMLoginStepLoginFailed://登录失败
             strStatus = @"10";
+//            isLoginFailed = YES;
             break;
         case NIMLoginStepSyncing://开始同步
             strStatus = @"13";
@@ -98,29 +102,42 @@
         }
     }
 }
+/*
+//登录失败后重新手动登录
+- (void)backLogin{
+    if (isLoginFailed) {
+        isLoginFailed = NO;
+        NSLog(@":%@   :%@",_strAccount,_strToken);
+        [[NIMSDK sharedSDK].loginManager login:_strAccount token:_strToken completion:^(NSError * _Nullable error) {
+            NSLog(@"error:%@",error);
+        }];
+    }
+}*/
 
 #pragma NIMLoginManagerDelegate
 -(void)onKick:(NIMKickReason)code clientType:(NIMLoginClientType)clientType
 {
-    switch (code) {
-        case NIMKickReasonByClient:{//被另外一个客户端踢下线 (互斥客户端一端登录挤掉上一个登录中的客户端)
-            [NIMModel initShareMD].NIMKick = @"1";
+
+        switch (code) {
+            case NIMKickReasonByClient:{//被另外一个客户端踢下线 (互斥客户端一端登录挤掉上一个登录中的客户端)
+                [NIMModel initShareMD].NIMKick = @"1";
+            }
+                break;
+            case NIMKickReasonByClientManually:{//被另外一个客户端手动选择踢下线
+                [NIMModel initShareMD].NIMKick = @"3";
+            }
+                break;
+            case NIMKickReasonByServer:{//你被服务器踢下线
+                [NIMModel initShareMD].NIMKick = @"2";
+            }
+                break;
+            default:
+                break;
         }
-            break;
-        case NIMKickReasonByClientManually:{//被另外一个客户端手动选择踢下线
-            [NIMModel initShareMD].NIMKick = @"3";
-        }
-            break;
-        case NIMKickReasonByServer:{//你被服务器踢下线
-            [NIMModel initShareMD].NIMKick = @"2";
-        }
-            break;
-        default:
-            break;
-    }
-    [[[NIMSDK sharedSDK] loginManager] logout:^(NSError *error) {
-    }];
+        [[[NIMSDK sharedSDK] loginManager] logout:^(NSError *error) {
+        }];
 }
+
 - (void)onAutoLoginFailed:(NSError *)error{
     
     NSLog(@"自动登录失败");
@@ -153,17 +170,17 @@
     for (NIMRecentSession *recent in NIMlistArr) {
         NSMutableDictionary *dic = [NSMutableDictionary dictionary];
         [dic setObject:[NSString stringWithFormat:@"%@",recent.session.sessionId] forKey:@"contactId"];
-        [dic setObject:[NSString stringWithFormat:@"%ld", recent.session.sessionType] forKey:@"sessionType"];
+        [dic setObject:[NSString stringWithFormat:@"%zd", recent.session.sessionType] forKey:@"sessionType"];
         //未读
-        [dic setObject:[NSString stringWithFormat:@"%ld", recent.unreadCount] forKey:@"unreadCount"];
+        [dic setObject:[NSString stringWithFormat:@"%zd", recent.unreadCount] forKey:@"unreadCount"];
         //群组名称或者聊天对象名称
         [dic setObject:[NSString stringWithFormat:@"%@", [self nameForRecentSession:recent] ] forKey:@"name"];
         //账号
         [dic setObject:[NSString stringWithFormat:@"%@", recent.lastMessage.from] forKey:@"account"];
         //消息类型
-        [dic setObject:[NSString stringWithFormat:@"%ld", recent.lastMessage.messageType] forKey:@"msgType"];
+        [dic setObject:[NSString stringWithFormat:@"%zd", recent.lastMessage.messageType] forKey:@"msgType"];
         //消息状态
-        [dic setObject:[NSString stringWithFormat:@"%ld", recent.lastMessage.deliveryState] forKey:@"msgStatus"];
+        [dic setObject:[NSString stringWithFormat:@"%zd", recent.lastMessage.deliveryState] forKey:@"msgStatus"];
         //消息ID
         [dic setObject:[NSString stringWithFormat:@"%@", recent.lastMessage.messageId] forKey:@"messageId"];
         //消息内容
@@ -198,7 +215,7 @@
         if (recent.session.sessionType == NIMSessionTypeP2P) {
             NSMutableDictionary *dic = [NSMutableDictionary dictionary];
             [dic setObject:[NSString stringWithFormat:@"%@",recent.session.sessionId] forKey:@"contactId"];
-            [dic setObject:[NSString stringWithFormat:@"%ld", recent.session.sessionType] forKey:@"sessionType"];
+            [dic setObject:[NSString stringWithFormat:@"%zd", recent.session.sessionType] forKey:@"sessionType"];
             //未读
             NSString *strUnreadCount = [NSString stringWithFormat:@"%ld", recent.unreadCount];
             allUnreadNum = allUnreadNum + [strUnreadCount integerValue];
@@ -208,9 +225,9 @@
             //账号
             [dic setObject:[NSString stringWithFormat:@"%@",recent.lastMessage.session.sessionId] forKey:@"account"];
             //消息类型
-            [dic setObject:[NSString stringWithFormat:@"%ld", recent.lastMessage.messageType] forKey:@"msgType"];
+            [dic setObject:[NSString stringWithFormat:@"%zd", recent.lastMessage.messageType] forKey:@"msgType"];
             //消息状态
-            [dic setObject:[NSString stringWithFormat:@"%ld", recent.lastMessage.deliveryState] forKey:@"msgStatus"];
+            [dic setObject:[NSString stringWithFormat:@"%zd", recent.lastMessage.deliveryState] forKey:@"msgStatus"];
             //消息ID
             [dic setObject:[NSString stringWithFormat:@"%@", recent.lastMessage.messageId] forKey:@"messageId"];
             //消息内容
@@ -229,9 +246,9 @@
             if ( [[NIMSDK sharedSDK].teamManager isMyTeam:recent.lastMessage.session.sessionId]) {
                 NSMutableDictionary *dic = [NSMutableDictionary dictionary];
                 [dic setObject:[NSString stringWithFormat:@"%@",recent.session.sessionId] forKey:@"contactId"];
-                [dic setObject:[NSString stringWithFormat:@"%ld", recent.session.sessionType] forKey:@"sessionType"];
+                [dic setObject:[NSString stringWithFormat:@"%zd", recent.session.sessionType] forKey:@"sessionType"];
                 //未读
-                NSString *strUnreadCount = [NSString stringWithFormat:@"%ld", recent.unreadCount];
+                NSString *strUnreadCount = [NSString stringWithFormat:@"%zd", recent.unreadCount];
                 allUnreadNum = allUnreadNum + [strUnreadCount integerValue];
                 [dic setObject:strUnreadCount forKey:@"unreadCount"];
                 //群组名称或者聊天对象名称
@@ -239,9 +256,9 @@
                 //账号
                 [dic setObject:[NSString stringWithFormat:@"%@", recent.lastMessage.from] forKey:@"account"];
                 //消息类型
-                [dic setObject:[NSString stringWithFormat:@"%ld", recent.lastMessage.messageType] forKey:@"msgType"];
+                [dic setObject:[NSString stringWithFormat:@"%zd", recent.lastMessage.messageType] forKey:@"msgType"];
                 //消息状态
-                [dic setObject:[NSString stringWithFormat:@"%ld", recent.lastMessage.deliveryState] forKey:@"msgStatus"];
+                [dic setObject:[NSString stringWithFormat:@"%zd", recent.lastMessage.deliveryState] forKey:@"msgStatus"];
                 //消息ID
                 [dic setObject:[NSString stringWithFormat:@"%@", recent.lastMessage.messageId] forKey:@"messageId"];
                 //消息内容
@@ -251,8 +268,8 @@
                 
                 [dic setObject:[NSString stringWithFormat:@"%@", [self imageUrlForRecentSession:recent] ?  [self imageUrlForRecentSession:recent] : @""] forKey:@"imagePath"];
                 NIMTeam *team = [[[NIMSDK sharedSDK] teamManager]teamById:recent.lastMessage.session.sessionId];
-                [dic setObject:[NSString stringWithFormat:@"%ld",team.memberNumber] forKey:@"memberCount"];
-                NSString *strMute = team.notifyForNewMsg?@"1":@"0";
+                [dic setObject:[NSString stringWithFormat:@"%zd",team.memberNumber] forKey:@"memberCount"];
+                NSString *strMute = team.notifyStateForNewMsg == NIMTeamNotifyStateAll ? @"1" : @"0";
                 [dic setObject:strMute forKey:@"mute"];
                 [sessionList addObject:dic];
                 
@@ -371,12 +388,32 @@
                 text = [self dealWithData:obj.dataDict];
             }
                 break;
+            case CustomMessgeTypeBusinessCard: //名片
+            {
+                if([message.from isEqualToString:[NIMSDK sharedSDK].loginManager.currentAccount]){//如果是自己
+                    text = [NSString stringWithFormat:@"你推荐了%@", [obj.dataDict objectForKey:@"name"]];
+                }else{
+                    text = [NSString stringWithFormat:@"向你推荐了%@", [obj.dataDict objectForKey:@"name"]];
+                }
+            }
+                break;
+            case CustomMessgeTypeCustom: //自定义
+            {
+                text = [self dealWithCustomData:obj.dataDict];
+            }
+                break;
             default:
                 text = @"[未知消息]";
                 break;
         }
     }
     return text;
+}
+
+//处理自定义消息
+- (NSString *)dealWithCustomData:(NSDictionary *)dict{
+    NSString *recentContent = [self stringFromKey:@"recentContent" andDict:dict];
+    return recentContent;
 }
 
 //处理拆红包消息

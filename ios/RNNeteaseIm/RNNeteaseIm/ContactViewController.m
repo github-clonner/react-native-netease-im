@@ -116,7 +116,32 @@
 }
 //获取本地用户资料
 -(void)getUserInFo:(NSString *)userId Success:(Success )success{
-    NIMUser   *user = [[NIMSDK sharedSDK].userManager userInfo:userId];
+    NIMUser  *user = [[NIMSDK sharedSDK].userManager userInfo:userId];
+    if (!user.userInfo) {
+        [[NIMSDK sharedSDK].userManager fetchUserInfos:@[userId] completion:^(NSArray *users, NSError *error) {
+            //从服务器获取用户信息，会自动缓存到本地
+        }];
+    }
+    NSMutableDictionary *userDict = [self setupUserDict:user andUserId:userId];
+    success(userDict);
+
+}
+
+//获取服务器用户资料
+-(void)fetchUserInfos:(NSString *)userId Success:(Success )success error:(Error )err{
+    [[NIMSDK sharedSDK].userManager fetchUserInfos:@[userId] completion:^(NSArray *users, NSError *error) {
+        if (users.count) {
+            for (NIMUser   *user in users) {
+                NSMutableDictionary *userDict = [self setupUserDict:user andUserId:userId];
+                success(userDict);
+            }
+        }else{
+            err(@"该用户不存在,请检查你输入的帐号是否正确");
+        }
+    }];
+}
+//设置用户信息
+- (NSMutableDictionary *)setupUserDict:(NIMUser *)user andUserId:(NSString *)userId{
     BOOL isMe          = [userId isEqualToString:[NIMSDK sharedSDK].loginManager.currentAccount];
     BOOL isMyFriend    = [[NIMSDK sharedSDK].userManager isMyFriend:userId];
     BOOL isInBlackList = [[NIMSDK sharedSDK].userManager isUserInBlackList:userId];
@@ -132,59 +157,21 @@
     [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.birth] forKey:@"birthday"];
     [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.mobile] forKey:@"mobile"];
     [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.ext] forKey:@"extension"];
+    [dic setObject:@"" forKey:@"extensionMap"];
     [dic setObject:[NSString stringWithFormat:@"%d",isMe] forKey:@"isMe"];
     [dic setObject:[NSString stringWithFormat:@"%d",isMyFriend] forKey:@"isMyFriend"];
     [dic setObject:[NSString stringWithFormat:@"%d",isInBlackList] forKey:@"isInBlackList"];
     [dic setObject:[NSString stringWithFormat:@"%d",needNotify] forKey:@"mute"];
-    [dic setObject:@"" forKey:@"extensionMap"];
     NSArray *keys = [dic allKeys];
     for (NSString *tem  in keys) {
         if ([[dic objectForKey:tem] isEqualToString:@"(null)"]) {
             [dic setObject:@"" forKey:tem];
         }
     }
-    success(dic);
+    return dic;
 }
 
-//获取服务器用户资料
--(void)fetchUserInfos:(NSString *)userId Success:(Success )success error:(Error )err{
-    [[NIMSDK sharedSDK].userManager fetchUserInfos:@[userId] completion:^(NSArray *users, NSError *error) {
-        if (users.count) {
-            BOOL isMe          = [userId isEqualToString:[NIMSDK sharedSDK].loginManager.currentAccount];
-            BOOL isMyFriend    = [[NIMSDK sharedSDK].userManager isMyFriend:userId];
-            BOOL isInBlackList = [[NIMSDK sharedSDK].userManager isUserInBlackList:userId];
-            BOOL needNotify    = [[NIMSDK sharedSDK].userManager notifyForNewMsg:userId];
-            for (NIMUser   *user in users) {
-                NSMutableDictionary *dic = [NSMutableDictionary dictionary];
-                [dic setObject:[NSString stringWithFormat:@"%@", user.userId] forKey:@"contactId"];
-                [dic setObject:[NSString stringWithFormat:@"%@", user.alias] forKey:@"alias"];
-                [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.nickName] forKey:@"name"];
-                [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.avatarUrl] forKey:@"avatar"];
-                [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.sign] forKey:@"signature"];
-                [dic setObject:[NSString stringWithFormat:@"%ld", user.userInfo.gender ] forKey:@"gender"];
-                [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.email] forKey:@"email"];
-                [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.birth] forKey:@"birthday"];
-                [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.mobile] forKey:@"mobile"];
-                [dic setObject:[NSString stringWithFormat:@"%@",user.userInfo.ext] forKey:@"extension"];
-                [dic setObject:@"" forKey:@"extensionMap"];
-                [dic setObject:[NSString stringWithFormat:@"%d",isMe] forKey:@"isMe"];
-                [dic setObject:[NSString stringWithFormat:@"%d",isMyFriend] forKey:@"isMyFriend"];
-                [dic setObject:[NSString stringWithFormat:@"%d",isInBlackList] forKey:@"isInBlackList"];
-                [dic setObject:[NSString stringWithFormat:@"%d",needNotify] forKey:@"needNotify"];
-                NSArray *keys = [dic allKeys];
-                for (NSString *tem  in keys) {
-                    if ([[dic objectForKey:tem] isEqualToString:@"(null)"]) {
-                        [dic setObject:@"" forKey:tem];
-                    }
-                }
-                success(dic);
-            }
-        }else{
-            err(@"该用户不存在,请检查你输入的帐号是否正确");
-        }
-    }];
 
-}
 //修改好友备注
 -(void)upDateUserInfo:(NSString *)contactId alias:(NSString *)alias Success:(Success )success error:(Error )err{
     _user = [[NIMSDK sharedSDK].userManager userInfo:contactId];
@@ -205,50 +192,6 @@
     } error:^(NSString *error) {
         NSLog(@"更新失败");
     }];
-    /*
-    NSArray *keys = [userInFo allKeys];
-    NSMutableDictionary  *userDic = [NSMutableDictionary dictionary];
-    for (NSString *tem  in keys) {
-        //设置用户昵称
-        if ([tem isEqualToString:@"NIMUserInfoUpdateTagNick"]) {
-            [userDic setObject:[userInFo objectForKey:@"NIMUserInfoUpdateTagNick"] forKey:@(NIMUserInfoUpdateTagNick)];
-        }
-        //用户头像
-        if ([tem isEqualToString:@"NIMUserInfoUpdateTagAvatar"]) {
-            [userDic setObject:[userInFo objectForKey:@"NIMUserInfoUpdateTagAvatar"] forKey:@(NIMUserInfoUpdateTagAvatar)];
-        }
-        //用户签名
-        if ([tem isEqualToString:@"NIMUserInfoUpdateTagSign"]) {
-            [userDic setObject:[userInFo objectForKey:@"NIMUserInfoUpdateTagSign"] forKey:@(NIMUserInfoUpdateTagSign)];
-        }
-        //用户性别
-        if ([tem isEqualToString:@"NIMUserInfoUpdateTagGender"]) {
-            [userDic setObject:[userInFo objectForKey:@"NIMUserInfoUpdateTagGender"] forKey:@(NIMUserInfoUpdateTagGender)];
-        }
-        //用户邮箱
-        if ([tem isEqualToString:@"NIMUserInfoUpdateTagEmail"]) {
-            [userDic setObject:[userInFo objectForKey:@"NIMUserInfoUpdateTagEmail"] forKey:@(NIMUserInfoUpdateTagEmail)];
-        }
-        //用户生日
-        if ([tem isEqualToString:@"NIMUserInfoUpdateTagBirth"]) {
-            [userDic setObject:[userInFo objectForKey:@"NIMUserInfoUpdateTagBirth"] forKey:@(NIMUserInfoUpdateTagBirth)];
-        }
-        //用户手机
-        if ([tem isEqualToString:@"NIMUserInfoUpdateTagBirth"]) {
-            [userDic setObject:[userInFo objectForKey:@"NIMUserInfoUpdateTagBirth"] forKey:@(NIMUserInfoUpdateTagBirth)];
-        }
-        //拓展字段
-        if ([tem isEqualToString:@"NIMUserInfoUpdateTagExt"]) {
-            [userDic setObject:[userInFo objectForKey:@"NIMUserInfoUpdateTagExt"] forKey:@(NIMUserInfoUpdateTagExt)];
-        }
-    }
-    [[NIMSDK sharedSDK].userManager updateMyUserInfo:userDic completion:^(NSError *error) {
-        if (!error) {
-            success(@"设置成功");
-        }else{
-            err(@"昵称设置失败，请重试");
-        }
-    }];*/
 }
 
 //- (void)presentMemberSelector:(ContactSelectFinishBlock) block{
@@ -280,7 +223,7 @@
             continue;
         }
         NSString *groupTitle = [member groupTitle];
-        NTESContactDataMember *contact  =member;
+        NTESContactDataMember *contact  = member;
         NSMutableDictionary *dic = [NSMutableDictionary dictionary];
         [dic setObject:[NSString stringWithFormat:@"%@", contact.info.showName] forKey:@"name"];
         [dic setObject:[NSString stringWithFormat:@"%@", contact.info.infoId] forKey:@"contactId"];
@@ -299,9 +242,7 @@
     }
 
     NIMModel *model = [NIMModel initShareMD];
-    if (tmp.count) {
-        model.contactList = tmp;
-    }
+    model.contactList = tmp;
 }
 
 //通讯录删除好友

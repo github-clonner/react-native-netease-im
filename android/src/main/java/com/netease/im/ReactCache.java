@@ -11,6 +11,7 @@ import com.netease.im.common.ImageLoaderKit;
 import com.netease.im.login.LoginService;
 import com.netease.im.session.extension.AccountNoticeAttachment;
 import com.netease.im.session.extension.BankTransferAttachment;
+import com.netease.im.session.extension.CardAttachment;
 import com.netease.im.session.extension.CustomAttachment;
 import com.netease.im.session.extension.CustomAttachmentType;
 import com.netease.im.session.extension.DefaultCustomAttachment;
@@ -49,10 +50,11 @@ import com.netease.nimlib.sdk.msg.model.AttachmentProgress;
 import com.netease.nimlib.sdk.msg.model.IMMessage;
 import com.netease.nimlib.sdk.msg.model.RecentContact;
 import com.netease.nimlib.sdk.msg.model.SystemMessage;
+import com.netease.nimlib.sdk.team.constant.TeamMessageNotifyTypeEnum;
 import com.netease.nimlib.sdk.team.model.Team;
 import com.netease.nimlib.sdk.team.model.TeamMember;
-import com.netease.nimlib.sdk.uinfo.UserInfoProvider;
 import com.netease.nimlib.sdk.uinfo.model.NimUserInfo;
+import com.netease.nimlib.sdk.uinfo.model.UserInfo;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -81,6 +83,9 @@ public class ReactCache {
     public final static String observeBlackList = "observeBlackList";//'黑名单'
     public final static String observeAttachmentProgress = "observeAttachmentProgress";//'上传下载进度'
     public final static String observeOnKick = "observeOnKick";//'被踢出'
+    public final static String observeAccountNotice = "observeAccountNotice";//'账户变动通知'
+    public final static String observeLaunchPushEvent = "observeLaunchPushEvent";//''
+    public final static String observeBackgroundPushEvent = "observeBackgroundPushEvent";//''
 
     final static String TAG = "ReactCache";
     private static ReactContext reactContext;
@@ -134,7 +139,7 @@ public class ReactCache {
                         map.putString("teamType", Integer.toString(team.getType().getValue()));
                         imagePath = team.getIcon();
                         map.putString("memberCount", Integer.toString(team.getMemberCount()));
-                        map.putString("mute", boolean2String(!team.mute()));
+                        map.putString("mute", getMessageNotifyType(team.getMessageNotifyType()));
                     }
                 }
                 map.putString("imagePath", imagePath);
@@ -254,11 +259,22 @@ public class ReactCache {
                                 }
                             }
                             break;
+                        case CustomAttachmentType.Card:
+                            if (attachment instanceof CardAttachment) {
+                                String str;
+                                if (fromAccount.equals(LoginService.getInstance().getAccount())) {
+                                    str = "推荐了";
+                                } else {
+                                    str = "向你推荐了";
+                                }
+                                content = str + ((CardAttachment) attachment).getName();
+                            }
+                            break;
                         default:
                             if (attachment instanceof DefaultCustomAttachment) {
                                 content = ((DefaultCustomAttachment) attachment).getDigst();
                                 if (TextUtils.isEmpty(content)) {
-                                    content = "[自定义消息]";
+                                    content = "[未知消息]";
                                 }
                             }
                             break;
@@ -268,7 +284,7 @@ public class ReactCache {
                 map.putString("content", content);
                 array.pushMap(map);
             }
-            LogUtil.w(TAG, array + "");
+//            LogUtil.w(TAG, array + "");
         }
         writableMap.putArray("recents", array);
         writableMap.putString("unreadCount", Integer.toString(unreadNumTotal));
@@ -453,6 +469,7 @@ public class ReactCache {
         if (userInfo != null) {
 
             writableMap.putString("isMyFriend", boolean2String(FriendDataCache.getInstance().isMyFriend(userInfo.getAccount())));
+//            writableMap.putString("isMyFriend", boolean2String(NIMClient.getService(FriendService.class).isMyFriend(userInfo.getAccount())));
             writableMap.putString("isMe", boolean2String(userInfo.getAccount() != null && userInfo.getAccount().equals(LoginService.getInstance().getAccount())));
             writableMap.putString("isInBlackList", boolean2String(NIMClient.getService(FriendService.class).isInBlackList(userInfo.getAccount())));
             writableMap.putString("mute", boolean2String(NIMClient.getService(FriendService.class).isNeedMessageNotify(userInfo.getAccount())));
@@ -575,10 +592,10 @@ public class ReactCache {
         }
     }
 
-    public static Object createBlackList(List<UserInfoProvider.UserInfo> data) {
+    public static Object createBlackList(List<UserInfo> data) {
         WritableArray array = Arguments.createArray();
         if (data != null) {
-            for (UserInfoProvider.UserInfo userInfo : data) {
+            for (UserInfo userInfo : data) {
                 if (userInfo != null) {
                     WritableMap writableMap = Arguments.createMap();
                     writableMap.putString("contactId", userInfo.getAccount());
@@ -619,6 +636,18 @@ public class ReactCache {
         return writableArray;
     }
 
+    static String getMessageNotifyType(TeamMessageNotifyTypeEnum notifyTypeEnum){
+        String notify = "1";
+        if(notifyTypeEnum==TeamMessageNotifyTypeEnum.All){
+            notify = "1";
+        }else if(notifyTypeEnum==TeamMessageNotifyTypeEnum.Manager){
+            notify = "0";
+        }else if(notifyTypeEnum==TeamMessageNotifyTypeEnum.Mute){
+            notify = "0";
+        }
+        return notify;
+    }
+
     public static Object createTeamInfo(Team team) {
         WritableMap writableMap = Arguments.createMap();
         if (team != null) {
@@ -630,7 +659,7 @@ public class ReactCache {
             writableMap.putString("introduce", team.getIntroduce());
             writableMap.putString("createTime", TimeUtil.getTimeShowString(team.getCreateTime(), true));
             writableMap.putString("creator", team.getCreator());
-            writableMap.putString("mute", boolean2String(!team.mute()));
+            writableMap.putString("mute", getMessageNotifyType(team.getMessageNotifyType()));
             writableMap.putString("memberCount", Integer.toString(team.getMemberCount()));
             writableMap.putString("memberLimit", Integer.toString(team.getMemberLimit()));
         }
@@ -770,11 +799,14 @@ public class ReactCache {
                         case CustomAttachmentType.RedPacketOpen:
                             type = MessageConstant.MsgType.RED_PACKET_OPEN;
                             break;
+                        case CustomAttachmentType.Card:
+                            type = MessageConstant.MsgType.CARD;
+                            break;
                         default:
                             type = MessageConstant.MsgType.CUSTON;
                             break;
                     }
-                }else {
+                } else {
                     type = MessageConstant.MsgType.CUSTON;
                 }
                 break;
@@ -786,8 +818,8 @@ public class ReactCache {
         return type;
     }
 
-    static String getMessageStatus(MsgStatusEnum statusEnum){
-        switch (statusEnum){
+    static String getMessageStatus(MsgStatusEnum statusEnum) {
+        switch (statusEnum) {
             case draft:
                 return MessageConstant.MsgStatus.SEND_DRAFT;
             case sending:
@@ -805,6 +837,7 @@ public class ReactCache {
         }
 
     }
+
     final static String MESSAGE_EXTEND = MessageConstant.Message.EXTEND;
 
     /**
@@ -838,20 +871,27 @@ public class ReactCache {
 
         WritableMap user = Arguments.createMap();
         String fromAccount = item.getFromAccount();
+        String avatar = null;
+
         String fromNick = null;
+        String displayName = null;
         try {
             fromNick = item.getFromNick();
         } catch (Exception e) {
             e.printStackTrace();
         }
-        user.putString(MessageConstant.User.USER_ID, fromAccount);
+        if (!TextUtils.isEmpty(fromAccount)) {
 
-        if (item.getSessionType() == SessionTypeEnum.Team && !TextUtils.equals(LoginService.getInstance().getAccount(), fromAccount)) {
-            user.putString(MessageConstant.User.DISPLAY_NAME, getTeamUserDisplayName(item.getSessionId(), fromAccount));
-        } else {
-            user.putString(MessageConstant.User.DISPLAY_NAME, !TextUtils.isEmpty(fromNick) ? fromNick : NimUserInfoCache.getInstance().getUserDisplayName(fromAccount));
+
+            if (item.getSessionType() == SessionTypeEnum.Team && !TextUtils.equals(LoginService.getInstance().getAccount(), fromAccount)) {
+                displayName = getTeamUserDisplayName(item.getSessionId(), fromAccount);
+            } else {
+                displayName = !TextUtils.isEmpty(fromNick) ? fromNick : NimUserInfoCache.getInstance().getUserDisplayName(fromAccount);
+            }
+            avatar = NimUserInfoCache.getInstance().getAvatar(fromAccount);
         }
-        String avatar = NimUserInfoCache.getInstance().getAvatar(fromAccount);
+        user.putString(MessageConstant.User.DISPLAY_NAME, displayName);
+        user.putString(MessageConstant.User.USER_ID, fromAccount);
         user.putString(MessageConstant.User.AVATAR_PATH, avatar);
         itemMap.putMap(MessageConstant.Message.FROM_USER, user);
 
@@ -952,6 +992,12 @@ public class ReactCache {
 //                                    return null;
 //                                }
                                 itemMap.putMap(MESSAGE_EXTEND, rpOpen.toReactNative());
+                            }
+                            break;
+                        case CustomAttachmentType.Card:
+                            if (attachment instanceof CardAttachment) {
+                                CardAttachment cardAttachment = (CardAttachment) attachment;
+                                itemMap.putMap(MESSAGE_EXTEND, cardAttachment.toReactNative());
                             }
                             break;
                         default:

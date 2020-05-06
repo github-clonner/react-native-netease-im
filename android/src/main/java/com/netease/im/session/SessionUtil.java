@@ -3,13 +3,15 @@ package com.netease.im.session;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Intent;
-import android.support.v4.app.NotificationCompat;
 import android.text.TextUtils;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.netease.im.IMApplication;
+import com.netease.im.login.LoginService;
 import com.netease.im.session.extension.RedPacketOpenAttachement;
+import com.netease.im.uikit.cache.NimUserInfoCache;
+import com.netease.im.uikit.cache.TeamDataCache;
 import com.netease.im.uikit.common.util.log.LogUtil;
 import com.netease.nimlib.sdk.NIMClient;
 import com.netease.nimlib.sdk.msg.MessageBuilder;
@@ -23,6 +25,8 @@ import com.netease.nimlib.sdk.msg.model.IMMessage;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import androidx.core.app.NotificationCompat;
 
 /**
  * Created by dowin on 2017/5/2.
@@ -41,6 +45,18 @@ public class SessionUtil {
             e.printStackTrace();
         }
         return sessionTypeE;
+    }
+
+    public static String getSessionName(String sessionId, SessionTypeEnum sessionTypeEnum, boolean selfName) {
+        String name = sessionId;
+        if (sessionTypeEnum == SessionTypeEnum.P2P) {
+            NimUserInfoCache nimUserInfoCache = NimUserInfoCache.getInstance();
+            String pId = selfName ? LoginService.getInstance().getAccount() : sessionId;
+            name = nimUserInfoCache.getUserName(pId);
+        } else if (sessionTypeEnum == SessionTypeEnum.Team) {
+            name = TeamDataCache.getInstance().getTeamName(sessionId);
+        }
+        return name;
     }
 
     private static void appendPushConfig(IMMessage message) {
@@ -131,7 +147,7 @@ public class SessionUtil {
 //                LogUtil.w("timestamp",""+data);
                 String sessionId = data.getString("sessionId");
                 String sessionType = data.getString("sessionType");
-                final String id =  sessionId;//getSessionType(sessionType) == SessionTypeEnum.P2P ? openId :
+                final String id = sessionId;//getSessionType(sessionType) == SessionTypeEnum.P2P ? openId :
                 sendRedPacketOpenLocal(id, getSessionType(sessionType), sendId, openId, hasRedPacket, serialNo, t);
             }
         }

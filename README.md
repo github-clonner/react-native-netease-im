@@ -1,57 +1,69 @@
 
 React Native的网易云信插件
+欢迎加入QQ群交流`153174456`
 ## Demo
 [react-native-chat-demo](https://github.com/reactnativecomponent/react-native-chat-demo)
 
-#### 注意: react-native版本需要0.40.0及以上
+#### 注意事项: 
+##### 2.普通帐号不要使用5位数，因为5位数设定是系统帐号，尽量使用6位或者6位以上
 
-## 如何安装
-
-### 1.首先安装npm包
+### 1.安装
 
 ```bash
-npm install react-native-netease-im --save
+npm install react-native-netease-im 或者 yarn add react-native-netease-im 
+cd ios
+pod install
 ```
+### 2.配置
 
-### 2.link
-```bash
-react-native link react-native-netease-im
+#### 2.1 android配置
+
+在`android/app/build.gradle`里，defaultConfig栏目下添加如下代码：
 ```
+multiDexEnabled true
+manifestPlaceholders = [
+	// 如果有多项，每一项之间需要用逗号分隔
+    NIM_KEY: "云信的APPID"    //在此修改云信APPID
+]
+```
+在`AndroidManifest.xml`里，添加如下代码：
+```
+< manifest
 
-#### 手动link~（如果不能够自动link）
-#####ios
-a.打开XCode's工程中, 右键点击Libraries文件夹 ➜ Add Files to <...>
-b.去node_modules ➜ react-native-netease-im ➜ ios ➜ 选择 RNNeteaseIm.xcodeproj
-c.在工程Build Phases ➜ Link Binary With Libraries中添加libRNNeteaseIm.a
+    ......
 
-#####Android
+    <!-- SDK 权限申明 -->
+    <permission
+        android:name="${applicationId}.permission.RECEIVE_MSG"
+        android:protectionLevel="signature"/>
+    <!-- 接收 SDK 消息广播权限 -->
+    <uses-permission android:name="${applicationId}.permission.RECEIVE_MSG"/>
+
+    ......
+    < application
+            ......
+            <!-- 设置你的网易聊天App Key -->
+     <meta-data android:name="com.netease.nim.appKey" android:value="${NIM_KEY}" />
+
 
 ```
-// file: android/settings.gradle
-...
-
-include ':react-native-netease-im'
-project(':react-native-netease-im').projectDir = new File(settingsDir, '../node_modules/react-native-netease-im/android')
-```
-
-```
-// file: android/app/build.gradle
-...
-
-dependencies {
-    ...
-    compile project(':react-native-netease-im')
-}
-```
-
 `android/app/src/main/java/<你的包名>/MainActivity.java`
-
 ```
 import com.netease.im.uikit.permission.MPermission;
+import com.netease.im.RNNeteaseImModule;
+import com.netease.im.ReceiverMsgParser;
 
 public class MainActivity extends ReactActivity {
 
  ......
+
+  @Override
+     protected void onCreate(Bundle savedInstanceState) {
+         super.onCreate(savedInstanceState);
+         if(ReceiverMsgParser.checkOpen(getIntent())){//在后台时处理点击推送消息
+             RNNeteaseImModule.launch = getIntent();
+         }
+     }
 
  @Override
  public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -61,64 +73,39 @@ public class MainActivity extends ReactActivity {
 
 `android/app/src/main/java/<你的包名>/MainApplication.java`中添加如下两行：
 
-```java
+```
 ...
-import com.netease.im.RNNeteaseImPackage;  // 在public class MainApplication之前import
+import com.netease.im.RNNeteaseImPackage;
 import com.netease.im.IMApplication;
+import com.netease.im.ImPushConfig;
 
 public class MainApplication extends Application implements ReactApplication {
 
-  private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this) {
-    @Override
-    protected boolean getUseDeveloperSupport() {
-      return BuildConfig.DEBUG;
-    }
-
-    @Override
-    protected List<ReactPackage> getPackages() {
-      return Arrays.<ReactPackage>asList(
-          new RNNeteaseImPackage(), // 然后添加这一行
-          new MainReactPackage()
-      );
-    }
-  };
-
   @Override
-  public ReactNativeHost getReactNativeHost() {
-      return mReactNativeHost;
-  }
-   @Override
   public void onCreate() {
-    //初始化方法appId以及appKey在小米开放平台获取，小米推送证书名称在网易云信后台设置
-    IMApplication.setDebugAble(BuildConfig.DEBUG);
-    IMApplication.init(this, MainActivity.class,R.drawable.ic_stat_notify_msg,new    IMApplication.MiPushConfig("小米推送证书名称","小米推送appId","小米推送的appKey"));
+    // IMApplication.setDebugAble(BuildConfig.DEBUG);
+    // 推送配置，没有可传null
+     ImPushConfig config = new ImPushConfig();
+    // 小米证书配置，没有可不填
+    config.xmAppId = "";
+    config.xmAppKey = "";
+    config.xmCertificateName = "";
+    // 华为推送配置，没有可不填
+    config.hwCertificateName = "";
+    IMApplication.init(this, MainActivity.class,R.drawable.ic_stat_notify_msg, config);
    ...
   }
 }
 ```
 
-
-### 3.工程配置
-#### iOS配置
-install with CocoaPods
-```
-pod 'NIMSDK'
-pod 'SSZipArchive', '~> 1.2'
-pod 'Reachability', '~> 3.1.1'
-pod 'CocoaLumberjack', '~> 2.0.0-rc2'
-pod 'FMDB', '~>2.5' 
-```
-Run `pod install`
-
-在工程target的`Build Phases->Link Binary with Libraries`中加入`、libsqlite3.tbd、libc++、libz.tbd、CoreTelephony.framework`
-
+#### 2.2 ios配置
 
 
 在你工程的`AppDelegate.m`文件中添加如下代码：
 
 ```
 ...
-#import <NIMSDK/NIMS
+#import <NIMSDK/NIMSDK.h>
 #import "NTESSDKConfigDelegate.h"
 @interface AppDelegate ()
 @property (nonatomic,strong) NTESSDKConfigDelegate *sdkConfigDelegate;
@@ -130,8 +117,17 @@ Run `pod install`
 ...
 [self setupNIMSDK];
 [self registerAPNs];
+if (launchOptions) {//未启动时，点击推送消息
+    NSDictionary * remoteNotification = [launchOptions objectForKey:UIApplicationLaunchOptionsRemoteNotificationKey];
+    if (remoteNotification) {
+      [self performSelector:@selector(clickSendObserve:) withObject:remoteNotification afterDelay:0.5];
+    }
+  }
 ...
 return YES;
+}
+- (void)clickSendObserve:(NSDictionary *)dict{
+  [[NSNotificationCenter defaultCenter]postNotificationName:@"ObservePushNotification" object:@{@"dict":dict,@"type":@"launch"}];
 }
 - (void)setupNIMSDK
 {
@@ -155,81 +151,61 @@ UIUserNotificationSettings *settings = [UIUserNotificationSettings settingsForTy
 
 - (void)application:(UIApplication *)app didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken
 {
-[[NIMSDK sharedSDK] updateApnsToken:deviceToken];
+  [[NIMSDK sharedSDK] updateApnsToken:deviceToken];
 }
-
+//在后台时处理点击推送消息
 - (void)application:(UIApplication *)application didReceiveRemoteNotification:(NSDictionary *)userInfo{
-NSLog(@"receive remote notification:  %@", userInfo);
-}
 
+  [[NSNotificationCenter defaultCenter]postNotificationName:@"ObservePushNotification" object:@{@"dict":userInfo,@"type":@"background"}];
+}
 - (void)application:(UIApplication *)app didFailToRegisterForRemoteNotificationsWithError:(NSError *)error
 {
-NSLog(@"fail to get apns token :%@",error);
+  NSLog(@"fail to get apns token :%@",error);
 }
-
-- (BOOL)application:(UIApplication *)application openURL:(NSURL *)url sourceApplication:(NSString *)sourceApplication annotation:(id)annotation {
-  return [RCTLinkingManager application:application openURL:url sourceApplication:sourceApplication annotation:annotation];
+- (void)applicationDidEnterBackground:(UIApplication *)application {
+  NSInteger count = [[[NIMSDK sharedSDK] conversationManager] allUnreadCount];
+  [[UIApplication sharedApplication] setApplicationIconBadgeNumber:count];
 }
 ```
 
-#### Android配置
 
-在`android/app/build.gradle`里，defaultConfig栏目下添加如下代码：
-
-
-在`AndroidManifest.xml`里，添加如下代码：
-```
-< manifest
-
-    ......
-
-    <!-- SDK 权限申明, 第三方 APP 接入时，请将 com.im.demo 替换为自己的包名 -->
-    <!-- 和下面的 uses-permission 一起加入到你的 AndroidManifest 文件中。 -->
-    <permission
-        android:name="com.im.demo.permission.RECEIVE_MSG"
-        android:protectionLevel="signature"/>
-    <!-- 接收 SDK 消息广播权限， 第三方 APP 接入时，请将 com.netease.nim.demo 替换为自己的包名 -->
-    <uses-permission android:name="com.im.demo.permission.RECEIVE_MSG"/>
-    <!-- 小米推送 -->
-    <permission
-        android:name="com.im.demo.permission.MIPUSH_RECEIVE"
-        android:protectionLevel="signature"/>
-    <uses-permission android:name="com.im.demo.permission.MIPUSH_RECEIVE"/>
-
-    ......
-    < application
-            ......
-            <!-- 设置你的网易聊天App Key -->
-             <meta-data
-                        android:name="com.netease.nim.appKey"
-                        android:value="App Key" />
-
-```
 
 ## 如何使用
-
 ### 引入包
 
 ```
-import NIM from 'react-native-netease-im';
+import {NimSession} from 'react-native-netease-im';
 ```
 
 ### API
-#### NIM.login()
-```javascript
-// 登录参数 
-{
-	accid: "", //云信注册帐号
-    token:"" //登录的token
-}
-```
-返回一个`Promise`对象
+
+参考[index.js](https://github.com/reactnativecomponent/react-native-netease-im/blob/master/index.js)
 
 #### 监听会话
 ```
 NativeAppEventEmitter.addListener("observeRecentContact",(data)=>{
-  console.log(data); //返回内容android和ios有区别
+  console.log(data); //返回会话列表和未读数
 })；
 ```
-更多接口请参阅`index.js`,或者参考Demo
+#### 推送(推送配置参考官方文档即可)
+```
+//程序运行时获取的推送点击事件
+NativeAppEventEmitter.addListener("observeLaunchPushEvent",(data)=>{
+  console.log(data);
+})；
+//程序后台时获取的推送点击事件
+NativeAppEventEmitter.addListener("observeBackgroundPushEvent",(data)=>{
+  console.log(data); 
+})；
+//推送数据格式
+{
+    ...
+    sessionBody：{
+        sessionId:"",
+        sessionType:"",
+        sessionName:""
+    }
+}
+
+```
 

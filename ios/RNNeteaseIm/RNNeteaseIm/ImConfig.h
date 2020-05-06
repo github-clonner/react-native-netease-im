@@ -1,18 +1,20 @@
 //
-//  PrefixHeader.pch
-//  RNNeteaseIm
+//  ImConfig.h
+//  Test
 //
-//  Created by Dowin on 2017/5/9.
-//  Copyright © 2017年 Dowin. All rights reserved.
+//  Created by Kinooo on 2019/12/26.
+//  Copyright © 2019年 Kinooo. All rights reserved.
 //
-#ifndef PrefixHeader_pch
-#define PrefixHeader_pch
+
+#ifndef ImConfig_h
+#define ImConfig_h
+
 #import <NIMSDK/NIMSDK.h>
 #import "NTESGlobalMacro.h"
 #import "NIMKitInfo.h"
 #import "NIMKitUtil.h"
 #import "NIMKitInfoFetchOption.h"
-#import <CocoaLumberjack/CocoaLumberjack.h>
+//#import <CocoaLumberjack/CocoaLumberjack.h>
 #import <NIMAVChat/NIMAVChat.h>
 
 #import "NIMKit.h"
@@ -24,11 +26,12 @@
 #define NTESCommandTyping  (1)
 #define NTESCustom         (2)
 
-#ifdef DEBUG
-static DDLogLevel ddLogLevel = DDLogLevelVerbose;
-#else
-static DDLogLevel ddLogLevel = DDLogLevelInfo;
-#endif
+//#ifdef DEBUG
+//static DDLogLevel ddLogLevel = DDLogLevelVerbose;
+//#else
+//static DDLogLevel ddLogLevel = DDLogLevelInfo;
+//#endif
+
 #define NTES_USE_CLEAR_BAR - (BOOL)useClearBar{return YES;}
 
 #define NTES_FORBID_INTERACTIVE_POP - (BOOL)forbidInteractivePop{return YES;}
@@ -43,4 +46,5 @@ static DDLogLevel ddLogLevel = DDLogLevelInfo;
 #define CustomMessgeTypeBusinessCard  10     //名片
 #define CustomMessgeTypeCustom  102     //名片
 
-#endif /* PrefixHeader_pch */
+
+#endif /* ImConfig_h */

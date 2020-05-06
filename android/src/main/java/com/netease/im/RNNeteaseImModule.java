@@ -42,6 +42,7 @@ import com.netease.im.uikit.cache.NimUserInfoCache;
 import com.netease.im.uikit.cache.SimpleCallback;
 import com.netease.im.uikit.cache.TeamDataCache;
 import com.netease.im.uikit.common.util.log.LogUtil;
+import com.netease.im.uikit.common.util.sys.NetworkUtil;
 import com.netease.im.uikit.contact.core.model.ContactDataList;
 import com.netease.im.uikit.permission.MPermission;
 import com.netease.im.uikit.permission.annotation.OnMPermissionDenied;
@@ -72,13 +73,15 @@ import com.netease.nimlib.sdk.team.TeamService;
 import com.netease.nimlib.sdk.team.constant.TeamBeInviteModeEnum;
 import com.netease.nimlib.sdk.team.constant.TeamFieldEnum;
 import com.netease.nimlib.sdk.team.constant.TeamInviteModeEnum;
+import com.netease.nimlib.sdk.team.constant.TeamMessageNotifyTypeEnum;
 import com.netease.nimlib.sdk.team.constant.TeamTypeEnum;
 import com.netease.nimlib.sdk.team.constant.TeamUpdateModeEnum;
 import com.netease.nimlib.sdk.team.constant.VerifyTypeEnum;
+import com.netease.nimlib.sdk.team.model.CreateTeamResult;
 import com.netease.nimlib.sdk.team.model.Team;
 import com.netease.nimlib.sdk.team.model.TeamMember;
-import com.netease.nimlib.sdk.uinfo.UserInfoProvider;
 import com.netease.nimlib.sdk.uinfo.model.NimUserInfo;
+import com.netease.nimlib.sdk.uinfo.model.UserInfo;
 
 import java.io.File;
 import java.io.Serializable;
@@ -87,6 +90,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static com.netease.im.ReceiverMsgParser.getIntent;
 
 
 public class RNNeteaseImModule extends ReactContextBaseJavaModule implements LifecycleEventListener, ActivityEventListener {
@@ -148,6 +153,7 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
 //        LogUtil.w(TAG, "md5:" + MD5.getStringMD5(token));
 
         NIMClient.getService(AuthService.class).openLocalCache(contactId);
+        LogUtil.w(TAG, "s:" + NIMClient.getStatus().name());
         LoginService.getInstance().login(new LoginInfo(contactId, token), new RequestCallback<LoginInfo>() {
             @Override
             public void onSuccess(LoginInfo loginInfo) {
@@ -172,7 +178,6 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
 
             }
         });
-
     }
 
     /**
@@ -181,6 +186,7 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
     @ReactMethod
     public void logout() {
         LogUtil.w(TAG, "logout");
+        status = "";
         LoginService.getInstance().logout();
 
     }
@@ -355,7 +361,7 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
     public void getBlackList(final Promise promise) {
         final List<String> accounts = NIMClient.getService(FriendService.class).getBlackList();
         List<String> unknownAccounts = new ArrayList<>();
-        final List<UserInfoProvider.UserInfo> data = new ArrayList<>();
+        final List<UserInfo> data = new ArrayList<>();
         for (String contactId : accounts) {
             if (!NimUserInfoCache.getInstance().hasUser(contactId)) {
                 unknownAccounts.add(contactId);
@@ -490,7 +496,15 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
     @ReactMethod
     public void setTeamNotify(String teamId, String mute, final Promise promise) {
 
-        NIMClient.getService(TeamService.class).muteTeam(teamId, !string2Boolean(mute))
+        TeamMessageNotifyTypeEnum typeEnum = TeamMessageNotifyTypeEnum.All;
+        if ("0".equals(mute)) {
+            typeEnum = TeamMessageNotifyTypeEnum.Mute;
+        } else if ("1".equals(mute)) {
+            typeEnum = TeamMessageNotifyTypeEnum.All;
+        } else if ("2".equals(mute)) {
+            typeEnum = TeamMessageNotifyTypeEnum.Manager;
+        }
+        NIMClient.getService(TeamService.class).muteTeam(teamId, typeEnum)//!string2Boolean(mute)
                 .setCallback(new RequestCallbackWrapper<Void>() {
                     @Override
                     public void onResult(int code, Void aVoid, Throwable throwable) {
@@ -710,11 +724,12 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
         fieldsMap.put(TeamFieldEnum.Name, teamName);
         final String finalTeamName = teamName;
         NIMClient.getService(TeamService.class).createTeam(fieldsMap, teamTypeEnum, "", array2ListString(accounts))
-                .setCallback(new RequestCallbackWrapper<Team>() {
+                .setCallback(new RequestCallbackWrapper<CreateTeamResult>() {
                     @Override
-                    public void onResult(int code, Team team, Throwable throwable) {
+                    public void onResult(int code, CreateTeamResult createTeamResult, Throwable throwable) {
                         if (code == ResponseCode.RES_SUCCESS) {
 
+                            Team team = createTeamResult.getTeam();
                             MessageHelper.getInstance().onCreateTeamMessage(team);
                             WritableMap id = Arguments.createMap();
                             id.putString("teamId", team.getId());
@@ -921,9 +936,9 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
 
 
         NIMClient.getService(TeamService.class).addMembers(teamId, array2ListString(accounts))
-                .setCallback(new RequestCallbackWrapper<Void>() {
+                .setCallback(new RequestCallbackWrapper<List<String>>() {
                     @Override
-                    public void onResult(int code, Void aVoid, Throwable throwable) {
+                    public void onResult(int code, List<String> strings, Throwable throwable) {
                         if (code == ResponseCode.RES_SUCCESS) {
                             promise.resolve("" + code);
                         } else if (code == ResponseCode.RES_TEAM_INVITE_SUCCESS) {
@@ -1133,6 +1148,17 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
                 return 0;
             }
         });
+    }
+
+    @ReactMethod
+    public void sendCardMessage(String type, String name, String imgPath, String sessionId, final Promise promise) {
+        sessionService.sendCardMessage(type, name, imgPath, sessionId, new SessionService.OnSendMessageListener() {
+            @Override
+            public int onResult(int code, IMMessage message) {
+                return 0;
+            }
+        });
+
     }
 
     //5.发送自定义消息
@@ -1383,7 +1409,22 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
     @ReactMethod
     public void resendMessage(String messageId, final Promise promise) {
         LogUtil.w(TAG, "resendMessage" + messageId);
-        sessionService.resendMessage(messageId);
+        sessionService.queryMessage(messageId, new SessionService.OnMessageQueryListener() {
+            @Override
+            public int onResult(int code, IMMessage message) {
+                Map<String, Object> map = message.getLocalExtension();
+                if (map != null) {
+                    if (map.containsKey("resend")) {
+                        return -1;
+                    }
+                }
+                promise.resolve("200");
+                sessionService.resendMessage(message);
+
+                return 0;
+            }
+        });
+
     }
 
     /**
@@ -1938,22 +1979,75 @@ public class RNNeteaseImModule extends ReactContextBaseJavaModule implements Lif
 
         LogUtil.w(TAG, "onNewIntent:" + intent.getExtras());
 //        ReceiverMsgParser.openIntent(intent);
-        if (reactContext.getCurrentActivity() != null && ReceiverMsgParser.checkOpen(ReceiverMsgParser.getIntent())) {
-            intent.putExtras(ReceiverMsgParser.getIntent());
+        if (reactContext.getCurrentActivity() != null && ReceiverMsgParser.checkOpen(intent)) {
+            intent.putExtras(getIntent());
             reactContext.getCurrentActivity().setIntent(intent);
+            ReactCache.emit(ReactCache.observeBackgroundPushEvent, ReceiverMsgParser.getWritableMap(intent));
+            launch = null;
         }
 
     }
 
+    public static String status = "";
+    public static Intent launch = null;
+
+    @ReactMethod
+    public void getLaunch(Promise promise) {
+        if (launch == null) {
+            promise.resolve(null);
+        } else {
+            promise.resolve(ReceiverMsgParser.getWritableMap(launch));
+            launch = null;
+        }
+    }
+
+    @ReactMethod
+    public void fetchNetInfo(Promise promise) {
+        int networkType = NetworkUtil.getNetworkClass(reactContext);
+        String networkString = "";
+        switch (networkType) {
+            case NetworkUtil.NETWORK_CLASS_2_G:
+                networkString = "2g";
+                break;
+            case NetworkUtil.NETWORK_CLASS_3_G:
+                networkString = "3g";
+                break;
+            case NetworkUtil.NETWORK_CLASS_4_G:
+                networkString = "4g";
+                break;
+            case NetworkUtil.NETWORK_CLASS_WIFI:
+                networkString = "wifi";
+                break;
+            case NetworkUtil.NETWORK_CLASS_UNKNOWN:
+                networkString = "unknown";
+                break;
+        }
+        promise.resolve(networkString);
+    }
+
     @Override
     public void onHostResume() {
-        if (reactContext.getCurrentActivity() != null)
-            LogUtil.w(TAG, reactContext.getCurrentActivity().getClass().getPackage().getName());
-        LogUtil.w(TAG, "onHostResume");
+
+        LogUtil.w(TAG, "onHostResume:" + status);
+
+        if (!TextUtils.isEmpty(status) && !"onHostPause".equals(status)) {
+            if (NIMClient.getStatus().wontAutoLogin()) {
+                WritableMap r = Arguments.createMap();
+                r.putString("status", status);
+                ReactCache.emit(ReactCache.observeOnKick, r);
+            }
+        }
+//        if (NIMClient.getStatus().wontAutoLogin()) {
+//            Toast.makeText(IMApplication.getContext(), "您的帐号已在别的设备登录，请重新登陆", Toast.LENGTH_SHORT).show();
+//        }
+        status = "";
     }
 
     @Override
     public void onHostPause() {
+        if (TextUtils.isEmpty(status)) {
+            status = "onHostPause";
+        }
         LogUtil.w(TAG, "onHostPause");
     }
 

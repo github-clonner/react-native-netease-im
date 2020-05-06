@@ -3,22 +3,29 @@ package com.netease.im.session;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Handler;
-import android.support.annotation.NonNull;
 import android.text.TextUtils;
+import android.widget.Toast;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.common.MapBuilder;
+import com.netease.im.IMApplication;
+import com.netease.im.MessageConstant;
 import com.netease.im.MessageUtil;
 import com.netease.im.ReactCache;
 import com.netease.im.login.LoginService;
 import com.netease.im.session.extension.BankTransferAttachment;
+import com.netease.im.session.extension.CardAttachment;
 import com.netease.im.session.extension.CustomAttachment;
 import com.netease.im.session.extension.CustomAttachmentType;
 import com.netease.im.session.extension.DefaultCustomAttachment;
 import com.netease.im.session.extension.RedPacketAttachement;
 import com.netease.im.session.extension.RedPacketOpenAttachement;
+import com.netease.im.uikit.cache.NimUserInfoCache;
 import com.netease.im.uikit.cache.TeamDataCache;
+import com.netease.im.uikit.common.util.file.FileUtil;
 import com.netease.im.uikit.common.util.log.LogUtil;
+import com.netease.im.uikit.common.util.media.ImageUtil;
 import com.netease.im.uikit.common.util.string.MD5;
 import com.netease.im.uikit.session.helper.MessageHelper;
 import com.netease.im.uikit.session.helper.MessageListPanelHelper;
@@ -27,6 +34,7 @@ import com.netease.im.uikit.uinfo.UserInfoObservable;
 import com.netease.nimlib.sdk.AbortableFuture;
 import com.netease.nimlib.sdk.NIMClient;
 import com.netease.nimlib.sdk.Observer;
+import com.netease.nimlib.sdk.RequestCallback;
 import com.netease.nimlib.sdk.RequestCallbackWrapper;
 import com.netease.nimlib.sdk.ResponseCode;
 import com.netease.nimlib.sdk.friend.FriendService;
@@ -46,6 +54,7 @@ import com.netease.nimlib.sdk.msg.model.IMMessage;
 import com.netease.nimlib.sdk.msg.model.MemberPushOption;
 import com.netease.nimlib.sdk.msg.model.MessageReceipt;
 import com.netease.nimlib.sdk.msg.model.QueryDirectionEnum;
+import com.netease.nimlib.sdk.msg.model.RevokeMsgNotification;
 import com.netease.nimlib.sdk.team.model.Team;
 
 import java.io.File;
@@ -59,6 +68,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import androidx.annotation.NonNull;
+
 import static com.netease.nimlib.sdk.NIMClient.getService;
 
 /**
@@ -67,7 +78,7 @@ import static com.netease.nimlib.sdk.NIMClient.getService;
 
 public class SessionService {
 
-    final static String TAG = "SessionService2";
+    final static String TAG = "SessionService";
 
     private static final int LOAD_MESSAGE_COUNT = 20;
 
@@ -85,10 +96,12 @@ public class SessionService {
     private Handler handler;
     private boolean mute = false;
 
-    private boolean canSended = true;
+    private String sessionName = "";
+    private boolean isFriend = true;
 
     private SessionService() {
     }
+
 
     static class InstanceHolder {
         final static SessionService instance = new SessionService();
@@ -397,9 +410,11 @@ public class SessionService {
     /**
      * 消息撤回观察者
      */
-    Observer<IMMessage> revokeMessageObserver = new Observer<IMMessage>() {
+    Observer<RevokeMsgNotification> revokeMessageObserver = new Observer<RevokeMsgNotification>() {
         @Override
-        public void onEvent(IMMessage message) {
+        public void onEvent(RevokeMsgNotification item) {
+            if (item == null) {return;}
+            IMMessage message = item.getMessage();
             if (message == null || sessionId == null || !sessionId.equals(message.getSessionId())) {
                 return;
             }
@@ -552,18 +567,21 @@ public class SessionService {
         this.handler = handler;
         this.sessionId = sessionId;
 
+        if (NIMClient.getStatus().wontAutoLogin()) {
+            Toast.makeText(IMApplication.getContext(), "您的帐号已在别的设备登录，请重新登陆", Toast.LENGTH_SHORT).show();
+        }
         sessionTypeEnum = SessionUtil.getSessionType(type);
 
         if (sessionTypeEnum == SessionTypeEnum.P2P) {
-            canSended = NIMClient.getService(FriendService.class).isMyFriend(sessionId);
+            sessionName = NimUserInfoCache.getInstance().getUserName(sessionId);
+            isFriend = NIMClient.getService(FriendService.class).isMyFriend(sessionId);
+
             this.mute = !NIMClient.getService(FriendService.class).isNeedMessageNotify(sessionId);
         } else {
             Team t = TeamDataCache.getInstance().getTeamById(sessionId);
             if (t != null) {
                 this.mute = t.mute();
-                canSended = t.isMyTeam();
             } else {
-                canSended = false;
             }
         }
         registerObservers(true);
@@ -596,21 +614,16 @@ public class SessionService {
     /**
      * 重发消息到服务器
      *
-     * @param messageId
+     * @param item
      */
-    public void resendMessage(String messageId) {
+    public void resendMessage(IMMessage item) {
         // 重置状态为unsent
-        queryMessage(messageId, new OnMessageQueryListener() {
-            @Override
-            public int onResult(int code, IMMessage message) {
-                IMMessage item = message;
-                item.setStatus(MsgStatusEnum.sending);
-                deleteItem(item, true);
-                onMsgSend(item);
-                getMsgService().sendMessage(item, true);
-                return 0;
-            }
-        });
+        item.setStatus(MsgStatusEnum.sending);
+        deleteItem(item, true);
+//                onMsgSend(item);
+//                appendPushConfig(item);
+//                getMsgService().sendMessage(item, true);
+        sendMessageSelf(item, null, true);
     }
 
     /**
@@ -625,15 +638,20 @@ public class SessionService {
 //            message.setPushContent("有人@了你");
             message.setMemberPushOption(option);
         }
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
     }
 
     /**
      * @param content
      */
     public void sendTipMessage(String content, OnSendMessageListener onSendMessageListener) {
+        sendTipMessage(content, onSendMessageListener, false, true);
+    }
+
+    public void sendTipMessage(String content, OnSendMessageListener onSendMessageListener, boolean local, boolean enableUnreadCount) {
         CustomMessageConfig config = new CustomMessageConfig();
         config.enablePush = false; // 不推送
+        config.enableUnreadCount = enableUnreadCount;
         IMMessage message = MessageBuilder.createTipMessage(sessionId, sessionTypeEnum);
         if (sessionTypeEnum == SessionTypeEnum.Team) {
             Map<String, Object> contentMap = new HashMap<>(1);
@@ -646,15 +664,26 @@ public class SessionService {
 
             message.setContent(content);
             message.setConfig(config);
-            sendMessage(message, onSendMessageListener);
+            if (local) {
+                message.setStatus(MsgStatusEnum.success);
+                getMsgService().saveMessageToLocal(message, true);
+            } else {
+                sendMessageSelf(message, onSendMessageListener, false);
+            }
         }
     }
 
     public void sendImageMessage(String file, String displayName, OnSendMessageListener onSendMessageListener) {
         file = Uri.parse(file).getPath();
         File f = new File(file);
+        LogUtil.w(TAG, "path:" + f.getPath() + "-size:" + FileUtil.formatFileSize(f.length()));
+        File temp = ImageUtil.getScaledImageFileWithMD5(f, FileUtil.getMimeType(f.getPath()));
+        if (temp != null) {
+            f = temp;
+        }
+        LogUtil.w(TAG, "path:" + f.getPath() + "-size:" + FileUtil.formatFileSize(f.length()));
         IMMessage message = MessageBuilder.createImageMessage(sessionId, sessionTypeEnum, f, TextUtils.isEmpty(displayName) ? f.getName() : displayName);
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
     }
 
     public void sendAudioMessage(String file, long duration, OnSendMessageListener onSendMessageListener) {
@@ -662,7 +691,7 @@ public class SessionService {
         File f = new File(file);
 
         IMMessage message = MessageBuilder.createAudioMessage(sessionId, sessionTypeEnum, f, duration);
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
     }
 
     //        String md5Path = StorageUtil.getWritePath(filename, StorageType.TYPE_VIDEO);
@@ -684,7 +713,7 @@ public class SessionService {
             e.printStackTrace();
         }
         IMMessage message = MessageBuilder.createVideoMessage(sessionId, sessionTypeEnum, f, durationL, width, height, md5);
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
     }
 
     public void sendLocationMessage(String latitude, String longitude, String address, OnSendMessageListener onSendMessageListener) {
@@ -701,7 +730,7 @@ public class SessionService {
             e.printStackTrace();
         }
         IMMessage message = MessageBuilder.createLocationMessage(sessionId, sessionTypeEnum, lat, lon, address);
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
     }
 
     public void sendDefaultMessage(String type, String digst, String content, OnSendMessageListener onSendMessageListener) {
@@ -710,7 +739,7 @@ public class SessionService {
         attachment.setDigst(digst);
         attachment.setContent(content);
         IMMessage message = MessageBuilder.createCustomMessage(sessionId, sessionTypeEnum, digst, attachment, config);
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
     }
 
     public void sendRedPacketOpenMessage(String sendId, String openId, String hasRedPacket, String serialNo, OnSendMessageListener onSendMessageListener) {
@@ -722,7 +751,7 @@ public class SessionService {
 //        IMMessage message = MessageBuilder.createCustomMessage(sessionId, sessionTypeEnum, sendId + ";" + openId, attachment, config);
 //
 ////        message.
-//        sendMessage(message, onSendMessageListener);
+//        sendMessageSelf(message, onSendMessageListener,false);
         long timestamp = new Date().getTime() / 1000;
         SessionUtil.sendRedPacketOpenNotification(sessionId, sessionTypeEnum, sendId, openId, hasRedPacket, serialNo, timestamp);
         SessionUtil.sendRedPacketOpenLocal(sessionId, sessionTypeEnum, sendId, openId, hasRedPacket, serialNo, timestamp);
@@ -733,7 +762,16 @@ public class SessionService {
         RedPacketAttachement attachment = new RedPacketAttachement();
         attachment.setParams(type, comments, serialNo);
         IMMessage message = MessageBuilder.createCustomMessage(sessionId, sessionTypeEnum, comments, attachment, config);
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
+    }
+
+    public void sendCardMessage(String type, String name, String imgPath, String id, OnSendMessageListener onSendMessageListener) {
+        CustomMessageConfig config = new CustomMessageConfig();
+        CardAttachment attachment = new CardAttachment();
+        name = NimUserInfoCache.getInstance().getUserName(id);
+        attachment.setParams(type, name, imgPath, id);
+        IMMessage message = MessageBuilder.createCustomMessage(sessionId, sessionTypeEnum, "[名片] " + name, attachment, config);
+        sendMessageSelf(message, onSendMessageListener, false);
     }
 
     public void sendBankTransferMessage(String amount, String comments, String serialNo, OnSendMessageListener onSendMessageListener) {
@@ -741,7 +779,7 @@ public class SessionService {
         BankTransferAttachment attachment = new BankTransferAttachment();
         attachment.setParams(amount, comments, serialNo);
         IMMessage message = MessageBuilder.createCustomMessage(sessionId, sessionTypeEnum, comments, attachment, config);
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
     }
 
     public int sendForwardMessage(IMMessage selectMessage, final String sessionId, final String sessionType, String content, OnSendMessageListener onSendMessageListener) {
@@ -756,13 +794,13 @@ public class SessionService {
         if (message == null) {
             return 1;
         }
-        sendMessage(message, onSendMessageListener);
+        sendMessageSelf(message, onSendMessageListener, false);
         return 2;
     }
 
     void revokMessage(IMMessage message) {
         WritableMap msg = Arguments.createMap();
-        msg.putString("_id", message.getUuid());
+        msg.putString(MessageConstant.Message.MSG_ID, message.getUuid());
         ReactCache.emit(ReactCache.observeDeleteMessage, msg);
     }
 
@@ -832,23 +870,74 @@ public class SessionService {
         getMsgService().updateIMMessageStatus(message);
     }
 
-    public void sendMessage(final IMMessage message, final OnSendMessageListener onSendMessageListener) {
+    public void sendMessageSelf(final IMMessage message, final OnSendMessageListener onSendMessageListener, boolean resend) {
 
 
         appendPushConfig(message);
+        if (sessionTypeEnum == SessionTypeEnum.P2P) {
+            sessionName = NimUserInfoCache.getInstance().getUserName(sessionId);
 
-        getMsgService().sendMessage(message, false);
+
+            isFriend = NIMClient.getService(FriendService.class).isMyFriend(sessionId);
+            LogUtil.w(TAG, "isFriend:" + isFriend);
+            if (!isFriend) {
+
+                message.setStatus(MsgStatusEnum.fail);
+                CustomMessageConfig config = new CustomMessageConfig();
+                config.enablePush = false;
+                config.enableUnreadCount = false;
+                message.setConfig(config);
+                getMsgService().saveMessageToLocal(message, true);
+                sendTipMessage(sessionName + "开启了朋友验证，你还不是他(她)朋友。请先发送朋友验证请求，对方验证后，才能聊天。发送朋友验证", null, true, false);
+                return;
+            }
+        }
+        getMsgService().sendMessage(message, resend).setCallback(new RequestCallback<Void>() {
+            @Override
+            public void onSuccess(Void aVoid) {
+
+            }
+
+            @Override
+            public void onFailed(int code) {
+                LogUtil.w(TAG, "code:" + code);
+                if (code == ResponseCode.RES_IN_BLACK_LIST) {
+                    Map<String, Object> map = MapBuilder.newHashMap();
+                    map.put("resend", false);
+                    message.setLocalExtension(map);
+                    getMsgService().updateIMMessage(message);
+                    sendTipMessage("消息已发出，但被对方拒收了。", null, true, false);
+                }
+            }
+
+            @Override
+            public void onException(Throwable throwable) {
+                LogUtil.w(TAG, "throwable:" + throwable.getLocalizedMessage());
+            }
+        });
         onMessageStatusChange(message, true);
 
     }
 
     private void appendPushConfig(IMMessage message) {
-//        CustomPushContentProvider customConfig = NimUIKit.getCustomPushContentProvider();
+//        CustomPushContentProvider customConfig = null;//NimUIKit.getCustomPushContentProvider();
 //        if (customConfig != null) {
 //            String content = customConfig.getPushContent(message);
 //            Map<String, Object> payload = customConfig.getPushPayload(message);
-//            message.setPushContent(content);
-//            message.setPushPayload(payload);
+        message.setPushContent(message.getContent());
+        Map<String, Object> payload = new HashMap<>();
+        Map<String, Object> body = new HashMap<>();
+
+        body.put("sessionType", String.valueOf(message.getSessionType().getValue()));
+        if (message.getSessionType() == SessionTypeEnum.P2P) {
+            body.put("sessionId", LoginService.getInstance().getAccount());
+        } else if (message.getSessionType() == SessionTypeEnum.Team) {
+            body.put("sessionId", message.getSessionId());
+
+        }
+        body.put("sessionName", SessionUtil.getSessionName(sessionId, message.getSessionType(), true));
+        payload.put("sessionBody", body);
+        message.setPushPayload(payload);
 //        }
     }
 

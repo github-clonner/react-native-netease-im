@@ -6,12 +6,10 @@ import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.location.LocationProvider;
 import android.os.Environment;
-import android.support.annotation.DrawableRes;
 import android.text.TextUtils;
 import android.util.Log;
 
 import com.netease.im.common.ImageLoaderKit;
-import com.netease.im.common.crash.AppCrashHandler;
 import com.netease.im.common.sys.SystemUtil;
 import com.netease.im.contact.DefalutUserInfoProvider;
 import com.netease.im.contact.DefaultContactProvider;
@@ -33,13 +31,20 @@ import com.netease.nimlib.sdk.Observer;
 import com.netease.nimlib.sdk.SDKOptions;
 import com.netease.nimlib.sdk.StatusBarNotificationConfig;
 import com.netease.nimlib.sdk.auth.LoginInfo;
+import com.netease.nimlib.sdk.mixpush.MixPushConfig;
+import com.netease.nimlib.sdk.mixpush.MixPushService;
 import com.netease.nimlib.sdk.mixpush.NIMPushClient;
 import com.netease.nimlib.sdk.msg.MessageNotifierCustomization;
 import com.netease.nimlib.sdk.msg.MsgService;
 import com.netease.nimlib.sdk.msg.MsgServiceObserve;
 import com.netease.nimlib.sdk.msg.model.CustomNotification;
 import com.netease.nimlib.sdk.msg.model.IMMessage;
+import com.netease.nimlib.sdk.msg.model.RevokeMsgNotification;
 import com.netease.nimlib.sdk.uinfo.UserInfoProvider;
+import com.netease.nimlib.sdk.util.NIMUtil;
+
+import androidx.annotation.DrawableRes;
+
 
 /**
  * Created by dowin on 2017/4/28.
@@ -47,22 +52,6 @@ import com.netease.nimlib.sdk.uinfo.UserInfoProvider;
 
 public class IMApplication {
 
-
-    public static class MiPushConfig {
-
-        public String certificate;
-        public String appID;
-        public String appKey;
-
-        /**
-         * 注册小米推送证书名称 、推送appID 以及在云信管理后台添加的appKey
-         */
-        public MiPushConfig(String certificate, String appID, String appKey) {
-            this.certificate = certificate;
-            this.appID = appID;
-            this.appKey = appKey;
-        }
-    }
 
     // context
     private static Context context;
@@ -82,26 +71,34 @@ public class IMApplication {
     // 图片加载、缓存与管理组件
     private static ImageLoaderKit imageLoaderKit;
     private static StatusBarNotificationConfig statusBarNotificationConfig;
+    private static boolean DEBUG = false;
 
-    public static void init(Context context, Class mainActivityClass, @DrawableRes int notify_msg_drawable_id, MiPushConfig miPushConfig) {
+    public static void init(Context context, Class mainActivityClass, @DrawableRes int notify_msg_drawable_id, ImPushConfig miPushConfig) {
         IMApplication.context = context.getApplicationContext();
         IMApplication.mainActivityClass = mainActivityClass;
         IMApplication.notify_msg_drawable_id = notify_msg_drawable_id;
 
         // 注册小米推送appID 、appKey 以及在云信管理后台添加的小米推送证书名称，该逻辑放在 NIMClient init 之前
-        if (miPushConfig != null)
-            NIMPushClient.registerMiPush(context, miPushConfig.certificate, miPushConfig.appID, miPushConfig.appKey);
-
-        NIMClient.init(context, getLoginInfo(), getOptions(context));
+//        if (miPushConfig != null) {
+//            MixPushConfig mixPushConfig = new MixPushConfig();
+//            mixPushConfig.xmCertificateName = miPushConfig.certificate;
+//            mixPushConfig.xmAppId = miPushConfig.appID;
+//            mixPushConfig.xmAppKey = miPushConfig.appKey;
+//            NIMPushClient.initPush(new MixPushConfig());
+//        }
+        NIMClient.init(context, getLoginInfo(), getOptions(context, miPushConfig));
         // crash handler
-        AppCrashHandler.getInstance(context);
-        if (inMainProcess(IMApplication.context)) {
+//        AppCrashHandler.getInstance(context);
+        if (NIMUtil.isMainProcess(IMApplication.context)) {
 
 
             // init pinyin
             PinYin.init(context);
             PinYin.validate();
 
+            if (miPushConfig != null) {
+                NIMClient.getService(MixPushService.class).enable(true);
+            }
             // 初始化Kit模块
             initKit();
 
@@ -110,6 +107,7 @@ public class IMApplication {
     }
 
     public static void setDebugAble(boolean debugAble) {
+        DEBUG = debugAble;
         LogUtil.setDebugAble(debugAble);
     }
 
@@ -148,7 +146,7 @@ public class IMApplication {
         return Environment.getExternalStorageDirectory() + "/" + context.getPackageName() + "/nim";
     }
 
-    private static SDKOptions getOptions(Context context) {
+    private static SDKOptions getOptions(Context context, ImPushConfig miPushConfig) {
         SDKOptions options = new SDKOptions();
 
         // 如果将新消息通知提醒托管给SDK完成，需要添加以下配置。
@@ -175,6 +173,23 @@ public class IMApplication {
 
         // 在线多端同步未读数
         options.sessionReadAck = true;
+        //自动检查 SDK 配置是否完全
+        options.checkManifestConfig = DEBUG;
+        //reducedIM 支持弱 IM 场景
+        //asyncInitSDK 支持异步 SDK 初始化
+        //teamNotificationMessageMarkUnread 登录选项添加群通知消息是否计入未读数开关
+        //sdkStorageRootPath 配置的外置存储缓存根目录
+
+
+        // 推送配置
+        if(miPushConfig!=null) {
+            MixPushConfig pushConfig = new MixPushConfig();
+            pushConfig.xmAppId = miPushConfig.xmAppId;
+            pushConfig.xmAppKey = miPushConfig.xmAppKey;
+            pushConfig.xmCertificateName = miPushConfig.xmCertificateName;
+            pushConfig.hwCertificateName = miPushConfig.hwCertificateName;
+            options.mixPushConfig = pushConfig;
+        }
 
         return options;
     }
@@ -230,6 +245,10 @@ public class IMApplication {
         public String makeTicker(String nick, IMMessage message) {
             return null; // 采用SDK默认文案
         }
+        @Override
+        public String makeRevokeMsgTip(String revokeAccount, IMMessage item) {
+            return MessageUtil.getRevokeTipContent(item, revokeAccount);
+        }
     };
 
 
@@ -275,14 +294,14 @@ public class IMApplication {
     }
 
     private static void registerMsgRevokeObserver() {
-        NIMClient.getService(MsgServiceObserve.class).observeRevokeMessage(new Observer<IMMessage>() {
+        NIMClient.getService(MsgServiceObserve.class).observeRevokeMessage(new Observer<RevokeMsgNotification>() {
             @Override
-            public void onEvent(IMMessage message) {
-                if (message == null) {
+            public void onEvent(RevokeMsgNotification message) {
+                if (message == null && message.getMessage() == null) {
                     return;
                 }
 
-                MessageHelper.getInstance().onRevokeMessage(message);
+                MessageHelper.getInstance().onRevokeMessage(message.getMessage());
             }
         }, true);
     }

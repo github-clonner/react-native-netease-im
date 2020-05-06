@@ -9,6 +9,7 @@
 #import "NIMModel.h"
 
 @implementation NIMModel
+
 +(instancetype)initShareMD{
     static NIMModel *nimModel =nil;
     static dispatch_once_t onceToken;
@@ -43,12 +44,10 @@
     }
 }
 -(void)setNIMKick:(NSString *)NIMKick{
-    if ((_NIMKick != NIMKick)&&(NIMKick.length)) {
         _NIMKick = NIMKick;
         if (self.myBlock) {
             self.myBlock(2, NIMKick);
         }
-    }
 }
 //通信录列表
 -(void)setContactList:(NSMutableDictionary *)contactList{
@@ -145,6 +144,19 @@
         if (self.myBlock) {
             self.myBlock(15, deleteMessDict);
         }
+    }
+}
+
+
+- (void)setAccountNoticeDict:(NSDictionary *)accountNoticeDict{
+    if (self.myBlock) {
+        self.myBlock(16, accountNoticeDict);
+    }
+}
+
+- (void)setVideoProgress:(NSMutableArray *)videoProgress{
+    if (self.myBlock) {
+        self.myBlock(17, videoProgress);
     }
 }
 

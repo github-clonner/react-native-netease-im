@@ -10,6 +10,10 @@
 #import <AVFoundation/AVFoundation.h>
 #import "NSDictionary+NTESJson.h"
 #import "NIMMessageMaker.h"
+#import "NIMModel.h"
+#import "ConversationViewController.h"
+#import "ImConfig.h"
+
 @interface RNNotificationCenter () <NIMSystemNotificationManagerDelegate,NIMChatManagerDelegate>
 @property (nonatomic,strong) AVAudioPlayer *player; //播放提示音
 @end
@@ -27,7 +31,7 @@
 }
 - (void)start
 {
-    DDLogInfo(@"Notification Center Setup");
+//    DDLogInfo(@"Notification Center Setup");
 }
 - (instancetype)init {
     self = [super init];
@@ -47,7 +51,7 @@
     [[NIMSDK sharedSDK].chatManager removeDelegate:self];
 }
 #pragma mark - NIMChatManagerDelegate
-- (void)onRecvMessages:(NSArray *)messages
+- (void)onRecvMessages:(NSArray *)messages//接收到新消息
 {
     static BOOL isPlaying = NO;
     if (isPlaying) {
@@ -58,7 +62,7 @@
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         isPlaying = NO;
     });
-    [self checkMessageAt:messages];
+    [self checkTranferMessage:messages];
 }
 
 - (void)playMessageAudioTip
@@ -78,12 +82,40 @@
 //        [self.player play];
 //    }
 }
-
-- (void)checkMessageAt:(NSArray *)messages
-{
+//检测是不是消息助手发来的转账消息提醒
+- (void)checkTranferMessage:(NSArray *)messages{
+    for (NIMMessage *message in messages) {
+        if ([message.from isEqualToString:@"10000"] && (message.messageType == NIMMessageTypeCustom)) {
+            NIMCustomObject *customObject = message.messageObject;
+            DWCustomAttachment *obj = customObject.attachment;
+            if (obj && (obj.custType == CustomMessgeTypeAccountNotice)) {
+//                NSLog(@"dataDict:%@",obj.dataDict);
+                NIMModel *mode = [NIMModel initShareMD];
+                mode.accountNoticeDict = obj.dataDict;
+                
+            }
+        }
+    }
    
 }
 
+#pragma mark -- NIMChatManagerDelegate
+- (void)onRecvRevokeMessageNotification:(NIMRevokeMessageNotification *)notification
+{
+    NSString * tip = [[ConversationViewController initWithConversationViewController] tipOnMessageRevoked:notification];
+    NIMMessage *tipMessage = [[ConversationViewController initWithConversationViewController] msgWithTip:tip];
+    tipMessage.timestamp = notification.timestamp;
+    NIMMessage *deleMess = notification.message;
+    if (deleMess) {
+        NSDictionary *deleteDict = @{@"msgId":deleMess.messageId};
+        [NIMModel initShareMD].deleteMessDict = deleteDict;
+    }
+
+    // saveMessage 方法执行成功后会触发 onRecvMessages: 回调，但是这个回调上来的 NIMMessage 时间为服务器时间，和界面上的时间有一定出入，所以要提前先在界面上插入一个和被删消息的界面时间相符的 Tip, 当触发 onRecvMessages: 回调时，组件判断这条消息已经被插入过了，就会忽略掉。
+    [[NIMSDK sharedSDK].conversationManager saveMessage:tipMessage
+                                             forSession:notification.session
+                                             completion:nil];
+}
 #pragma mark - NIMSystemNotificationManagerDelegate
 - (void)onReceiveCustomSystemNotification:(NIMCustomSystemNotification *)notification{//接收自定义通知
 //    NSString *content = notification.content;
@@ -117,7 +149,7 @@
     DWCustomAttachment *obj = [[DWCustomAttachment alloc]init];
     obj.custType = CustomMessgeTypeRedPacketOpenMessage;
     obj.dataDict = datatDict;
-    message = [NIMMessageMaker msgWithCustomAttachment:obj];
+    message = [NIMMessageMaker msgWithCustomAttachment:obj andeSession:session];
     message.timestamp = timestamp;
     [[NIMSDK sharedSDK].conversationManager saveMessage:message forSession:session completion:nil];
 }

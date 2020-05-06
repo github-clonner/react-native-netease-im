@@ -4,9 +4,14 @@ import android.text.TextUtils;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
+import com.netease.im.RNNeteaseImModule;
 import com.netease.im.ReactCache;
+import com.netease.im.session.extension.AccountNoticeAttachment;
+import com.netease.im.session.extension.CustomAttachment;
+import com.netease.im.session.extension.CustomAttachmentType;
 import com.netease.im.uikit.cache.SimpleCallback;
 import com.netease.im.uikit.cache.TeamDataCache;
+import com.netease.im.uikit.common.util.log.LogUtil;
 import com.netease.nimlib.sdk.NIMClient;
 import com.netease.nimlib.sdk.Observer;
 import com.netease.nimlib.sdk.RequestCallbackWrapper;
@@ -15,6 +20,7 @@ import com.netease.nimlib.sdk.auth.AuthServiceObserver;
 import com.netease.nimlib.sdk.auth.constant.LoginSyncStatus;
 import com.netease.nimlib.sdk.msg.MsgService;
 import com.netease.nimlib.sdk.msg.MsgServiceObserve;
+import com.netease.nimlib.sdk.msg.constant.MsgTypeEnum;
 import com.netease.nimlib.sdk.msg.constant.SessionTypeEnum;
 import com.netease.nimlib.sdk.msg.model.IMMessage;
 import com.netease.nimlib.sdk.msg.model.RecentContact;
@@ -226,7 +232,29 @@ public class RecentContactObserver {
 
         @Override
         public void onEvent(List<IMMessage> imMessages) {
-
+            if (imMessages == null || imMessages.isEmpty()) {
+                return;
+            }
+            for (IMMessage m : imMessages) {
+                if (m.getMsgType() == MsgTypeEnum.custom) {
+                    CustomAttachment attachment = null;
+                    try {
+                        attachment = (CustomAttachment) m.getAttachment();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    if (attachment != null && attachment.getType() == CustomAttachmentType.AccountNotice) {
+                        AccountNoticeAttachment noticeAttachment = null;
+                        try {
+                            noticeAttachment = (AccountNoticeAttachment) attachment;
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                        ReactCache.emit(ReactCache.observeAccountNotice, noticeAttachment == null ? null : noticeAttachment.toReactNative());
+                        break;
+                    }
+                }
+            }
         }
     };
     Observer<List<RecentContact>> messageObserver = new Observer<List<RecentContact>>() {
@@ -293,12 +321,20 @@ public class RecentContactObserver {
                         status = "2";
                         break;
                 }
+                if ("onHostPause".equals(RNNeteaseImModule.status)) {
+                    RNNeteaseImModule.status = status;
+                }else {
+                    RNNeteaseImModule.status = "";
+                }
                 r.putString("status", status);
                 ReactCache.emit(ReactCache.observeOnKick, r);
+            } else {
+                RNNeteaseImModule.status = "";
             }
+
             WritableMap r = Arguments.createMap();
             String codeValue;
-            switch (code){
+            switch (code) {
                 case PWD_ERROR:
                     codeValue = "10";
                     break;
@@ -307,6 +343,8 @@ public class RecentContactObserver {
                     break;
             }
             r.putString("status", codeValue);
+            LogUtil.w(TAG, "onHostStatus1:" + RNNeteaseImModule.status);
+            LogUtil.w(TAG, "onHostStatus2:" + codeValue);
             ReactCache.emit(ReactCache.observeOnlineStatus, r);
         }
     };
